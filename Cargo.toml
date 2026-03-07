@@ -1,0 +1,9 @@
+[package]
+name = "anatomorph"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bevy = { version = "0.18.1" }
+bevy_panorbit_camera = "0.34.0"
+nalgebra = "0.34.1"
