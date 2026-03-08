@@ -1,6 +1,7 @@
+#![feature(try_blocks)]
 use crate::{
     multibody::{Body, MultiBody, NONE_PARENT, R3, SE3, SO3},
-    tool::select::{SelectCamera, SelectPlugin, Selectable},
+    tool::{control::ControlPlugin, select::{SelectCamera, SelectPlugin, Selectable}},
 };
 use bevy::prelude::*;
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
@@ -9,10 +10,15 @@ use crate::tool::Tools;
 
 pub mod multibody;
 pub mod tool;
+pub mod bevy_utils;
 
 pub trait IntoBevy {
     type Bevy;
     fn into_bevy(self) -> Self::Bevy;
+}
+pub trait IntoAnatomorph {
+    type Anatomorph;
+    fn into_anatomorph(self) -> Self::Anatomorph;
 }
 pub struct AnatomorphPlugin;
 #[derive(Debug, Resource)]
@@ -33,23 +39,23 @@ impl Scene {
                 Body {
                     transform: SE3 {
                         translation: R3::new(0.0, 0.0, 0.0),
-                        orientation: SO3::default(),
+                        rotation: SO3::default(),
                     },
                     parent: NONE_PARENT,
                 },
                 Body {
                     transform: SE3 {
                         translation: R3::new(0.0, 1.0, 0.0),
-                        orientation: SO3::default(),
+                        rotation: SO3::default(),
                     },
-                    parent: NONE_PARENT,
+                    parent: 0,
                 },
                 Body {
                     transform: SE3 {
-                        translation: R3::new(0.0, 1.0, 0.0),
-                        orientation: SO3::default(),
+                        translation: R3::new(1.0, 0.0, 0.0),
+                        rotation: SO3::default(),
                     },
-                    parent: NONE_PARENT,
+                    parent: 1,
                 },
             ]),
         }
@@ -57,7 +63,10 @@ impl Scene {
 }
 
 #[derive(Component)]
-pub struct TransformVisualizer;
+pub struct BodyVisualizer
+{
+    idx:usize
+}
 
 fn setup(
     mut commands: Commands,
@@ -73,7 +82,7 @@ fn setup(
             shadows_enabled: false,
             ..default()
         },
-        PanOrbitCamera { ..default() },
+        PanOrbitCamera {button_orbit:MouseButton::Right,button_pan:MouseButton::Middle, ..default() },
         SelectCamera,
     ));
     let sphere = meshes.add(Sphere::new(0.5).mesh().uv(32, 18));
@@ -86,28 +95,32 @@ fn setup(
         transform_visualize_material: material,
     });
 }
+fn update_scene(mut scene: ResMut<Scene>) {
+    scene.multibody.update_globbal_transforms();
+}
 fn visualize_scene(
     mut commands: Commands,
-    mut query: Query<(Entity, &mut Transform, &TransformVisualizer)>,
+    mut query: Query<(Entity, &mut Transform, &mut BodyVisualizer)>,
     scene: Res<Scene>,
     builtin: Res<Builtin>,
 ) {
     let target_length = scene.multibody.bodies.len();
     let mut idx = 0usize;
-    for (entity, mut transform, _) in query.iter_mut() {
+    for (entity, mut transform, mut visualizer) in query.iter_mut() {
         if idx < target_length {
-            let target_transform = scene.multibody.bodies[idx].transform;
+            let target_transform = scene.multibody.global_transform_of(idx);
             *transform = target_transform.into_bevy();
+            visualizer.idx = idx;
         } else {
             commands.entity(entity).despawn();
         }
         idx += 1;
     }
     for idx in idx..target_length {
-        let target_transform = scene.multibody.bodies[idx].transform;
+        let target_transform = scene.multibody.global_transform_of(idx);
         commands.spawn((
             target_transform.into_bevy(),
-            TransformVisualizer,
+            BodyVisualizer{idx},
             Mesh3d(builtin.transform_visualize_mesh.clone()),
             MeshMaterial3d(builtin.transform_visualize_material.clone()),
             Selectable,
@@ -119,8 +132,8 @@ impl Plugin for AnatomorphPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Tools>();
         app.insert_resource(Scene::test());
-        app.add_plugins((DefaultPlugins, PanOrbitCameraPlugin, SelectPlugin));
+        app.add_plugins((DefaultPlugins, PanOrbitCameraPlugin, SelectPlugin,ControlPlugin));
         app.add_systems(Startup, setup);
-        app.add_systems(Update, visualize_scene);
+        app.add_systems(Update, (update_scene, visualize_scene));
     }
 }

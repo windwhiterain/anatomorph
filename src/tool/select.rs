@@ -1,8 +1,7 @@
-use std::any::TypeId;
 
 use bevy::prelude::*;
 
-use crate::tool::{Tool, Tools};
+use crate::tool::{ ToolPlugin};
 
 pub struct SelectPlugin;
 
@@ -14,24 +13,27 @@ pub struct Selectable;
 #[require(MeshPickingCamera)]
 pub struct SelectCamera;
 
-fn on_click(mut events: MessageReader<Pointer<Click>>, q: Query<&Selectable>) {
-    for ev in events.read() {
-        if let Ok(entity) = q.get(ev.entity) {
-            info!("Picked entity with MyComponent: {:?}", ev.entity);
-        }
+#[derive(Resource,Default)]
+pub struct Selected{
+    pub entity:Option<Entity>
+}
+
+fn on_click(mut events: MessageReader<Pointer<Click>>, q: Query<&Selectable>,mut selected: ResMut<Selected>) {
+    if let Some(event) = events.read().last(){
+        selected.entity = Some(event.entity)
     }
 }
 
+impl ToolPlugin for SelectPlugin{}
+
 impl Plugin for SelectPlugin {
     fn build(&self, app: &mut App) {
-        app.world_mut()
-            .resource_mut::<Tools>()
-            .tools
-            .insert(TypeId::of::<SelectPlugin>(), Tool { enbaled: true });
+        Self::register(app);
+        app.init_resource::<Selected>();
         app.add_plugins(MeshPickingPlugin);
         app.add_systems(
             Update,
-            on_click.run_if(|tools: Res<Tools>| tools.tools[&TypeId::of::<SelectPlugin>()].enbaled),
+            on_click.run_if(Self::enbale_condition),
         );
     }
 }
