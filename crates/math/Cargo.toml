@@ -1,0 +1,12 @@
+[package]
+name = "anatomorph-math"
+version = "0.1.0"
+edition = "2024"
+
+[features]
+default = ["bevy"]
+bevy = ["bevy_math"]
+
+[dependencies]
+nalgebra = { workspace = true }
+bevy_math = { workspace = true, optional = true }

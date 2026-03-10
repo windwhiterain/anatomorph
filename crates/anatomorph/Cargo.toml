@@ -1,0 +1,10 @@
+[package]
+name = "anatomorph"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bevy = { workspace = true, features = ["debug"] }
+bevy_panorbit_camera = "0.34.0"
+nalgebra = { workspace = true }
+anatomorph-math = { path = "../math" }

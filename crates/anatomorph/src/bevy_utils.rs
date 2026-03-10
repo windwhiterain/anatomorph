@@ -1,9 +1,8 @@
-use bevy::{ecs::system::SystemParam, prelude::*};
-
-use crate::{
-    IntoAnatomorph, IntoBevy as _,
-    multibody::{R2, R3},
+use anatomorph_math::{
+    R2, R3,
+    bevy::{ToAnatomorph as _, ToBevy as _},
 };
+use bevy::{ecs::system::SystemParam, prelude::*};
 
 #[derive(SystemParam)]
 pub struct World2Pixel<'w, 's> {
@@ -16,8 +15,8 @@ impl<'w, 's> World2Pixel<'w, 's> {
 
         // 1. World → NDC (Normalized Device Coordinates)
         let ndc = camera
-            .world_to_ndc(camera_global_transform, position_world.into_bevy())?
-            .into_anatomorph();
+            .world_to_ndc(camera_global_transform, position_world.to_bevy())?
+            .to_anatomorph();
 
         // If behind camera, ndc.z < 0
         if ndc.z < 0.0 {
@@ -25,7 +24,7 @@ impl<'w, 's> World2Pixel<'w, 's> {
         }
 
         // 2. NDC → Pixel coordinates
-        let window_size = camera.logical_target_size().unwrap().into_anatomorph();
+        let window_size = camera.logical_target_size().unwrap().to_anatomorph();
         let position_pixel = ((ndc.xy().component_mul(&R2::new(1.0, -1.0)) + R2::new(1.0, 1.0))
             / 2.0)
             .component_mul(&window_size);
