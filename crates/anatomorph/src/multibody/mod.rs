@@ -10,7 +10,7 @@ use bevy::{
 };
 use nalgebra::{Quaternion, UnitQuaternion, Vector2, Vector3};
 
-use crate::{Builtin, Dependant, multibody::joint::{Idx, Joint, JointClass}};
+use crate::{Builtins, Dependant, multibody::joint::{Idx, Joint, JointClass}};
 
 pub mod joint;
 
@@ -131,7 +131,7 @@ fn visualize(
     mut query: Query<(Entity, &mut Transform, &mut BodyVisualizer, &mut Mesh3d)>,
     multibody: Res<MultiBody>,
     global_transforms: Res<GlobalTransforms>,
-    builtin: Res<Builtin>,
+    builtin: Res<Builtins>,
 ) {
     if !multibody.is_changed() && !global_transforms.is_changed() {
         return;

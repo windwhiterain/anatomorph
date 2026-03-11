@@ -28,7 +28,7 @@ impl BoneClass for Pole {
         multibody.bodies[bone.body_offset + 0] = Body {
             joint: Some(joint::Idx::SwingTwist(swing_twist_joint)),
             mesh: Some(BodyMesh {
-                scale: R3::new(1.0, 1.0, self.length),
+                scale: R3::new(1.0, 1.0, self.length).component_mul(&self.mesh.scale),
                 ..self.mesh.clone()
             }),
             ..Default::default()

@@ -2,22 +2,17 @@ use anatomorph_math::{
     R2, R3, SE3, SO3,
     bevy::{ToAnatomorph as _, ToBevy as _},
 };
-use bevy::prelude::*;
+use bevy::{camera::visibility::RenderLayers, prelude::*};
 use nalgebra::Unit;
 
 use crate::{
-    bevy_utils::World2Pixel,
+    Builtins, MainCamera, UICamera,
+    bevy_utils::World2Screen,
     multibody::{self, MultiBody, MultiBodyPlugin, joint::JointClass},
     tool::ToolPlugin,
 };
 
 pub struct Plugin;
-
-#[derive(Debug, Resource, Default)]
-pub struct Settings {
-    pub material: Handle<StandardMaterial>,
-    pub mesh: Handle<Mesh>,
-}
 
 #[derive(Debug, Component)]
 #[require(Pickable)]
@@ -29,28 +24,30 @@ fn visualize(
     mut commands: Commands,
     multibody: Res<MultiBody>,
     global_transforms: Res<multibody::GlobalTransforms>,
-    mut query: Query<(Entity, &mut Transform, &mut Visualizer)>,
-    settings: Res<Settings>,
+    mut controller: Query<(Entity, &mut Transform, &mut Visualizer)>,
+    settings: Res<Builtins>,
+    world2screen: World2Screen,
 ) {
-    if !multibody.is_changed() && !global_transforms.is_changed() {
-        return;
-    }
     let mut joints = (0..multibody.swing_twist_joints.len()).filter_map(|idx| {
         let body_idx = multibody.swing_twist_joints[idx].body;
         if let Some(target_transform) = global_transforms.global_transforms.get(body_idx) {
-            Some((
-                idx,
-                Transform {
-                    translation: target_transform.translation.to_bevy(),
-                    rotation: target_transform.rotation.to_bevy(),
-                    ..Default::default()
-                },
-            ))
+            if let Some(screen_position) = world2screen.world2screen(target_transform.translation) {
+                Some((
+                    idx,
+                    Transform {
+                        translation: screen_position.push(1.0).to_bevy(),
+                        scale: R3::repeat(16.0).to_bevy(),
+                        ..Default::default()
+                    },
+                ))
+            } else {
+                None
+            }
         } else {
             None
         }
     });
-    for (entity, mut transform, mut visualizer) in query.iter_mut() {
+    for (entity, mut transform, mut visualizer) in controller.iter_mut() {
         if let Some((idx, target_transform)) = joints.next() {
             *transform = target_transform;
             visualizer.idx = idx;
@@ -62,8 +59,9 @@ fn visualize(
         commands.spawn((
             target_transform,
             Visualizer { idx },
-            Mesh3d(settings.mesh.clone()),
-            MeshMaterial3d(settings.material.clone()),
+            Mesh2d(settings.rect.clone()),
+            MeshMaterial2d(settings.yellow.clone()),
+            RenderLayers::layer(1),
         ));
     }
 }
@@ -73,7 +71,7 @@ fn on_drag(
     mut multibody: ResMut<MultiBody>,
     multibody_global_transforms: Res<multibody::GlobalTransforms>,
     controller_visualizer: Query<&Visualizer>,
-    camera_global_transform: Query<&GlobalTransform, With<Camera>>,
+    camera_global_transform: Query<&GlobalTransform, With<MainCamera>>,
 ) {
     for event in events.read() {
         let _: Option<()> = try {
@@ -143,7 +141,6 @@ impl bevy::prelude::Plugin for Plugin {
         if !app.is_plugin_added::<MultiBodyPlugin>() {
             app.add_plugins(MultiBodyPlugin);
         }
-        app.init_resource::<Settings>();
         app.add_systems(
             Update,
             (
