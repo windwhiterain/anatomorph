@@ -44,7 +44,7 @@ fn setup(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut skeleton: ResMut<Skeleton>,
-    mut control_settings: ResMut<tool::control::Settings>,
+    mut control_settings: ResMut<tool::control::swing_twist::Settings>,
 ) {
     commands.spawn((
         Camera3d::default(),

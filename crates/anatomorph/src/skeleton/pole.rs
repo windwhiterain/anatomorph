@@ -2,7 +2,10 @@ use anatomorph_math::{Aff3, GL3, R3, SE3};
 use bevy::utils::default;
 
 use crate::{
-    multibody::{self, Body, BodyMesh, Joint},
+    multibody::{
+        self, Body, BodyMesh,
+        joint::{self, Joint},
+    },
     skeleton::{Bone, BoneClass},
 };
 
@@ -17,22 +20,34 @@ impl BoneClass for Pole {
         2
     }
 
-    fn update(&self, bone: &Bone, bodies: &mut [crate::multibody::Body]) {
-        bodies[0] = Body {
-            joint: Joint::Spherical(default()),
+    fn add(&self, bone: &Bone, multibody: &mut multibody::MultiBody) {
+        let swing_twist_joint = multibody.add_swing_twist_joint(Joint {
+            class: joint::SwingTwist::default(),
+            body: bone.body_offset + 0,
+        });
+        multibody.bodies[bone.body_offset + 0] = Body {
+            joint: Some(joint::Idx::SwingTwist(swing_twist_joint)),
             mesh: Some(BodyMesh {
                 scale: R3::new(1.0, 1.0, self.length),
                 ..self.mesh.clone()
             }),
             ..Default::default()
         };
-        bodies[END] = Body {
-            joint: Joint::Fixed(SE3 {
-                translation: R3::new(0.0, 0.0, self.length),
-                ..Default::default()
-            }),
-            parent: Some(bone.body_offset),
+        let free_joint = multibody.add_free_joint(Joint {
+            class: joint::Free::default(),
+            body: bone.body_offset + END,
+        });
+        multibody.bodies[bone.body_offset + END] = Body {
+            joint: Some(joint::Idx::Free(free_joint)),
+            parent: Some(bone.body_offset + 0),
             ..Default::default()
         };
+    }
+
+    fn update(&self, bone: &Bone, multibody: &mut multibody::MultiBody) {
+        let joint::Idx::Free(idx) = multibody.bodies[bone.body_offset + END].joint.unwrap() else {
+            unreachable!()
+        };
+        multibody.free_joints[idx].class.0.translation = R3::z() * self.length;
     }
 }

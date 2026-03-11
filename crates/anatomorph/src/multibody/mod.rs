@@ -10,52 +10,52 @@ use bevy::{
 };
 use nalgebra::{Quaternion, UnitQuaternion, Vector2, Vector3};
 
-use crate::{Builtin, Dependant};
+use crate::{Builtin, Dependant, multibody::joint::{Idx, Joint, JointClass}};
+
+pub mod joint;
 
 pub struct MultiBodyPlugin;
 
 impl Plugin for MultiBodyPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<MultiBody>();
+        app.init_resource::<Transforms>();
         app.init_resource::<GlobalTransforms>();
-        app.add_systems(Update, (update_global_transforms, visualize));
+        app.add_systems(Update, (update_transforms,update_global_transforms, visualize));
     }
 }
 
 #[derive(Debug, Default, Resource)]
 pub struct MultiBody {
     pub bodies: Vec<Body>,
+    pub free_joints: Vec<Joint<joint::Free>>,
+    pub swing_twist_joints: Vec<Joint<joint::SwingTwist>>,
 }
+
+impl MultiBody{
+    pub fn add_free_joint(&mut self,joint:Joint<joint::Free>)->usize{
+        self.free_joints.push(joint);
+        self.free_joints.len()-1
+    }
+    pub fn add_swing_twist_joint(&mut self,joint:Joint<joint::SwingTwist>)->usize{
+        self.swing_twist_joints.push(joint);
+        self.swing_twist_joints.len()-1
+    }
+}
+
+#[derive(Debug, Default, Resource)]
+pub struct Transforms {
+    pub transforms: Vec<SE3>,
+}
+
 #[derive(Debug, Default, Resource)]
 pub struct GlobalTransforms {
     pub global_transforms: Vec<SE3>,
 }
-#[derive(Debug, Clone, Copy)]
-pub enum Joint {
-    Fixed(SE3),
-    Free(SE3),
-    Spherical(SO3),
-}
-impl Joint {
-    pub fn to_transform(self) -> SE3 {
-        match self {
-            Joint::Fixed(transform) => transform,
-            Joint::Free(transform) => transform,
-            Joint::Spherical(rotation) => SE3 {
-                rotation,
-                ..Default::default()
-            },
-        }
-    }
-}
-impl Default for Joint {
-    fn default() -> Self {
-        Joint::Fixed(default())
-    }
-}
+
 #[derive(Debug, Default, Clone)]
 pub struct Body {
-    pub joint: Joint,
+    pub joint: Option<joint::Idx>,
     pub parent: Option<usize>,
     pub mesh: Option<BodyMesh>,
 }
@@ -92,21 +92,38 @@ impl MultiBody {
         }
     }
 }
+pub fn update_transforms(
+    multibody: Res<MultiBody>,
+    mut transforms: ResMut<Transforms>,
+){
+    if !multibody.is_changed() {return}
+    let transforms = &mut transforms.transforms;
+    let len = multibody.bodies.iter().len();
+    transforms.resize(len, default());
+    for joint in &multibody.free_joints{
+        transforms[joint.body] = joint.class.transform();
+    }
+    for joint in &multibody.swing_twist_joints{
+        transforms[joint.body] = joint.class.transform();
+    }
+}
 pub fn update_global_transforms(
     multibody: Res<MultiBody>,
+    transforms: Res<Transforms>,
     mut global_transforms: ResMut<GlobalTransforms>,
 ) {
-    if multibody.is_changed() {
-        let global_transforms = &mut global_transforms.global_transforms;
-        global_transforms.resize(multibody.bodies.len(), default());
-        for i in 0..multibody.bodies.len() {
-            let body = &multibody.bodies[i];
-            global_transforms[i] = if let Some(parent) = body.parent {
-                global_transforms[parent] * body.joint.to_transform()
-            } else {
-                body.joint.to_transform()
-            };
-        }
+    if !transforms.is_changed() {return}
+    let global_transforms = &mut global_transforms.global_transforms;
+    let transforms = &transforms.transforms;
+    let len = transforms.len();
+    global_transforms.resize(len, default());
+    for i in 0..len {
+        let body = &multibody.bodies[i];
+        global_transforms[i] = if let Some(parent) = body.parent {
+            global_transforms[parent] * transforms[i]
+        } else {
+            transforms[i]
+        };
     }
 }
 fn visualize(

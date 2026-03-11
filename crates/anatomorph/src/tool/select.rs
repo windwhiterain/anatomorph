@@ -19,7 +19,8 @@ fn on_click(
     mut selected: ResMut<Selected>,
 ) {
     if let Some(event) = events.read().last() {
-        selected.entity = Some(event.entity)
+        selected.entity = Some(event.entity);
+        info!("click:{:?}",event.button);
     }
 }
 

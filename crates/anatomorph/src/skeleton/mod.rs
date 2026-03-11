@@ -8,14 +8,15 @@ pub mod pole;
 
 pub trait BoneClass: Sync + Send + std::fmt::Debug {
     fn bodies_len(&self) -> usize;
-    fn update(&self, bone: &Bone, bodies: &mut [multibody::Body]);
+    fn add(&self, bone: &Bone, multibody: &mut MultiBody);
+    fn update(&self, bone: &Bone, multibody: &mut MultiBody);
 }
 
 #[derive(Debug)]
 pub struct Bone {
     pub class: Box<dyn BoneClass>,
     pub body_offset: usize,
-    pub parent: Option<BoneParent>,
+    pub parent_body: Option<usize>,
 }
 #[derive(Debug)]
 pub struct BoneParent {
@@ -34,17 +35,16 @@ impl Skeleton {
             skeleton: Skeleton,
         }
         impl Context {
-            fn traverse(&mut self, descriptor: SkeletonDescriptor, parent: Option<BoneParent>) {
+            fn traverse(&mut self, descriptor: SkeletonDescriptor, parent: Option<usize>) {
                 let body_offset = self.skeleton.bodies_len;
-                let idx: usize = self.skeleton.bones.len();
                 self.skeleton.bodies_len += descriptor.class.bodies_len();
                 self.skeleton.bones.push(Bone {
                     class: descriptor.class,
                     body_offset,
-                    parent,
+                    parent_body: parent,
                 });
-                for (body_offset, child) in descriptor.children {
-                    self.traverse(child, Some(BoneParent { idx, body_offset }));
+                for (child_body_offset, child) in descriptor.children {
+                    self.traverse(child, Some(body_offset + child_body_offset));
                 }
             }
         }
@@ -67,23 +67,22 @@ pub fn update_multibody(
     mut multibody: ResMut<MultiBody>,
     system_change_tick: SystemChangeTick,
 ) {
-    if skeleton.is_changed() {
-        multibody.bodies.resize_with(skeleton.bodies_len, default);
-        for idx in 0..skeleton.bones.len() {
-            let tick = skeleton.ticks[idx];
-            if tick.is_newer_than(system_change_tick.last_run(), system_change_tick.this_run()) {
-                let bone = &skeleton.bones[idx];
-                let bodies = &mut multibody.bodies
-                    [bone.body_offset..bone.body_offset + bone.class.bodies_len()];
-                bone.class.update(bone, bodies);
-                bodies[0].parent = if let Some(parent) = &bone.parent {
-                    Some(skeleton.bones[parent.idx].body_offset + parent.body_offset)
-                } else {
-                    None
-                };
-            }
+    if !skeleton.is_changed() {
+        return;
+    }
+    multibody.bodies.resize_with(skeleton.bodies_len, default);
+    for idx in 0..skeleton.bones.len() {
+        let tick = skeleton.ticks[idx];
+        let bone = &skeleton.bones[idx];
+        if tick == default() {
+            bone.class.add(bone, &mut multibody);
+            multibody.bodies[bone.body_offset].parent = bone.parent_body;
+        }
+        if tick.is_newer_than(system_change_tick.last_run(), system_change_tick.this_run()) {
+            bone.class.update(bone, &mut multibody);
         }
     }
+    info!("{multibody:?}")
 }
 pub struct SkeletonPlugin;
 impl Plugin for SkeletonPlugin {
