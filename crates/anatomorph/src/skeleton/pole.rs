@@ -21,7 +21,7 @@ impl BoneClass for Pole {
     }
 
     fn add(&self, bone: &Bone, multibody: &mut multibody::MultiBody) {
-        let swing_twist_joint = multibody.add_swing_twist_joint(Joint {
+        let swing_twist_joint = multibody.add_joint(Joint {
             class: joint::SwingTwist::default(),
             body: bone.body_offset + 0,
         });
@@ -33,7 +33,7 @@ impl BoneClass for Pole {
             }),
             ..Default::default()
         };
-        let free_joint = multibody.add_free_joint(Joint {
+        let free_joint = multibody.add_joint(Joint {
             class: joint::Free::default(),
             body: bone.body_offset + END,
         });
@@ -48,6 +48,6 @@ impl BoneClass for Pole {
         let joint::Idx::Free(idx) = multibody.bodies[bone.body_offset + END].joint.unwrap() else {
             unreachable!()
         };
-        multibody.free_joints[idx].class.0.translation = R3::z() * self.length;
+        multibody.joints.free[idx].class.0.translation = R3::z() * self.length;
     }
 }

@@ -8,7 +8,7 @@ use crate::{
     },
 };
 use anatomorph_math::{Aff3, R3, SE3};
-use bevy::{camera::visibility::RenderLayers, prelude::*};
+use bevy::{camera::visibility::RenderLayers, pbr::wireframe::WireframePlugin, prelude::*};
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 
 use crate::tool::Tools;
@@ -17,6 +17,7 @@ pub mod bevy_utils;
 pub mod multibody;
 pub mod skeleton;
 pub mod tool;
+pub mod impl_set;
 
 #[derive(Debug)]
 pub struct Dependant<T> {
@@ -158,6 +159,7 @@ impl Plugin for AnatomorphPlugin {
         app.init_resource::<Builtins>();
         app.add_plugins((
             DefaultPlugins,
+            WireframePlugin::default(),
             PanOrbitCameraPlugin,
             MultiBodyPlugin,
             SelectPlugin,

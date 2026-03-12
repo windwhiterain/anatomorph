@@ -28,8 +28,8 @@ fn visualize(
     settings: Res<Builtins>,
     world2screen: World2Screen,
 ) {
-    let mut joints = (0..multibody.swing_twist_joints.len()).filter_map(|idx| {
-        let body_idx = multibody.swing_twist_joints[idx].body;
+    let mut joints = (0..multibody.joints.swing_twist.len()).filter_map(|idx| {
+        let body_idx = multibody.joints.swing_twist[idx].body;
         if let Some(target_transform) = global_transforms.global_transforms.get(body_idx) {
             if let Some(screen_position) = world2screen.world2screen(target_transform.translation) {
                 Some((
@@ -77,7 +77,7 @@ fn on_drag(
         let _: Option<()> = try {
             let entity = event.entity;
             let idx = controller_visualizer.get(entity).ok()?.idx;
-            let body_idx = multibody.swing_twist_joints[idx].body;
+            let body_idx = multibody.joints.swing_twist[idx].body;
             let parent = multibody.bodies[body_idx].parent;
             let camera_transform = camera_global_transform.single().unwrap();
             let camera_translation = camera_transform.translation().to_anatomorph();
@@ -105,7 +105,7 @@ fn on_drag(
             let arc = Unit::new_normalize(
                 camera2joint * delta.component_mul(&R2::new(1.0, -1.0)).push(0.0),
             );
-            let joint = &mut multibody.swing_twist_joints[idx];
+            let joint = &mut multibody.joints.swing_twist[idx];
             let radius = joint.class.swing;
             let axis = Unit::new_normalize(radius.cross(&arc));
             let angle = delta.norm() / 256.0;

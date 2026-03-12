@@ -2,15 +2,11 @@ use std::ops::Mul;
 
 use anatomorph_math::{Aff3, R3, SE3, SO3, bevy::ToBevy};
 use bevy::{
-    ecs::{query::Changed, system::Query},
-    math::{Quat, Vec2, Vec3},
-    prelude::*,
-    transform::components::Transform,
-    utils::default,
+    ecs::{query::Changed, system::Query}, log::tracing_subscriber::layer::Context, math::{Quat, Vec2, Vec3}, prelude::*, transform::components::Transform, utils::default
 };
 use nalgebra::{Quaternion, UnitQuaternion, Vector2, Vector3};
 
-use crate::{Builtins, Dependant, multibody::joint::{Idx, Joint, JointClass}};
+use crate::{Builtins, Dependant, gen_set, multibody::joint::{Idx, Joint, JointClass}, impl_set::{InSet}};
 
 pub mod joint;
 
@@ -25,21 +21,26 @@ impl Plugin for MultiBodyPlugin {
     }
 }
 
+pub trait JointsTraverser {
+    fn run<T:JointClass>(&mut self,field:&Vec<Joint<T>>);
+}
+pub trait JointsTraverserMut {
+    fn run<T:JointClass>(&mut self,field:&mut Vec<Joint<T>>);
+}
+
+gen_set!(#[derive(Debug,Default)] pub Joints:JointsTraverser,JointsTraverserMut{free:Vec<Joint<joint::Free>>,swing_twist:Vec<Joint<joint::SwingTwist>>});
+
 #[derive(Debug, Default, Resource)]
 pub struct MultiBody {
     pub bodies: Vec<Body>,
-    pub free_joints: Vec<Joint<joint::Free>>,
-    pub swing_twist_joints: Vec<Joint<joint::SwingTwist>>,
+    pub joints: Joints,
 }
 
 impl MultiBody{
-    pub fn add_free_joint(&mut self,joint:Joint<joint::Free>)->usize{
-        self.free_joints.push(joint);
-        self.free_joints.len()-1
-    }
-    pub fn add_swing_twist_joint(&mut self,joint:Joint<joint::SwingTwist>)->usize{
-        self.swing_twist_joints.push(joint);
-        self.swing_twist_joints.len()-1
+    pub fn add_joint<T:JointClass>(&mut self,joint:Joint<T>)->usize where Vec<Joint<T>>:InSet<Joints>{
+        let vec = self.joints.get_mut::<Vec<Joint<T>>>();
+        vec.push(joint);
+        vec.len()-1
     }
 }
 
@@ -97,15 +98,20 @@ pub fn update_transforms(
     mut transforms: ResMut<Transforms>,
 ){
     if !multibody.is_changed() {return}
+    struct Context<'a>{
+        transforms:&'a mut Vec<SE3>
+    }
+    impl<'a> JointsTraverser for Context<'a>{
+        fn run<T:JointClass>(&mut self,field:&Vec<Joint<T>>) {
+            for joint in field{
+                self.transforms[joint.body] = joint.class.transform();
+            }
+        }
+    }
     let transforms = &mut transforms.transforms;
     let len = multibody.bodies.iter().len();
     transforms.resize(len, default());
-    for joint in &multibody.free_joints{
-        transforms[joint.body] = joint.class.transform();
-    }
-    for joint in &multibody.swing_twist_joints{
-        transforms[joint.body] = joint.class.transform();
-    }
+    multibody.joints.traverse(&mut Context{transforms});
 }
 pub fn update_global_transforms(
     multibody: Res<MultiBody>,

@@ -8,7 +8,7 @@ pub struct Joint<T: JointClass> {
     pub body: usize,
 }
 
-pub trait JointClass {
+pub trait JointClass: Clone+Copy {
     fn transform(self) -> SE3;
 }
 
