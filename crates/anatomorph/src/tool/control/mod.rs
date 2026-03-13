@@ -1,5 +1,7 @@
 use crate::{Builtins, bevy_utils::World2Screen, multibody::{self, MultiBody}, tool::ToolPlugin};
+use anatomorph_math::R2;
 use bevy::prelude::*;
+use nalgebra::Unit;
 
 pub mod swing_twist;
 
@@ -13,6 +15,14 @@ impl Plugin for ControlPlugin {
 
 // #[derive(Debug, Component)]
 // pub struct Visualizer;
+
+// pub struct Controller{
+//     pub axis:Unit<R2>,
+//     pub offset:R2,
+// }
+// pub struct Controllers{
+//     pub controllers: Vec<Controller>,
+// }
 
 
 // fn visualize(

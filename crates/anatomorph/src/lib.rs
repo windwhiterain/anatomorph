@@ -13,11 +13,12 @@ use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 
 use crate::tool::Tools;
 
+pub mod base_class;
 pub mod bevy_utils;
+pub mod impl_set;
 pub mod multibody;
 pub mod skeleton;
 pub mod tool;
-pub mod impl_set;
 
 #[derive(Debug)]
 pub struct Dependant<T> {
@@ -35,11 +36,11 @@ impl<T: Default> Default for Dependant<T> {
 }
 pub struct AnatomorphPlugin;
 
-#[derive(Debug, Resource,Default)]
+#[derive(Debug, Resource, Default)]
 pub struct Builtins {
     pub default_material: Handle<StandardMaterial>,
-    pub circle:Handle<Mesh>,
-    pub rect:Handle<Mesh>,
+    pub circle: Handle<Mesh>,
+    pub rect: Handle<Mesh>,
     pub cube: Handle<Mesh>,
     pub sphere: Handle<Mesh>,
     pub yellow: Handle<ColorMaterial>,
@@ -89,7 +90,7 @@ fn setup(
         },
     ));
     let circle = meshes.add(Circle::new(0.5).mesh());
-    let rect = meshes.add(Rectangle::new(1.0,1.0).mesh());
+    let rect = meshes.add(Rectangle::new(1.0, 1.0).mesh());
     let sphere = meshes.add(Circle::new(0.5).mesh());
     let cube = meshes.add(Cuboid::new(1.0, 1.0, 1.0).mesh());
     let material = materials.add(StandardMaterial {
@@ -97,11 +98,21 @@ fn setup(
         ..default()
     });
     let yellow = color_materials.add(ColorMaterial {
-        color: Color::Srgba(Srgba { red: 1.0, green: 1.0, blue: 0.4, alpha: 0.2 }),
+        color: Color::Srgba(Srgba {
+            red: 1.0,
+            green: 1.0,
+            blue: 0.4,
+            alpha: 0.2,
+        }),
         ..default()
     });
     let green = color_materials.add(ColorMaterial {
-        color: Color::Srgba(Srgba { red: 0.6, green: 1.0, blue: 0.6, alpha: 0.2 }),
+        color: Color::Srgba(Srgba {
+            red: 0.6,
+            green: 1.0,
+            blue: 0.6,
+            alpha: 0.2,
+        }),
         ..default()
     });
     builtins.default_material = material;
@@ -112,39 +123,39 @@ fn setup(
     builtins.yellow = yellow;
     builtins.green = green;
     *skeleton = Skeleton::new(SkeletonDescriptor {
-        class: Box::new(skeleton::pole::Pole {
-            length: 1.0,
-            mesh: BodyMesh {
+        class: Box::new(skeleton::pole::Pole::new(
+            1.0,
+            BodyMesh {
                 handle: builtins.cube.clone(),
                 translation: R3::new(0.0, 0.0, 0.5),
-                scale: R3::new(0.2,0.2,1.0),
+                scale: R3::new(0.2, 0.2, 1.0),
                 ..Default::default()
             },
-        }),
+        )),
         children: vec![(
-            skeleton::pole::END,
+            skeleton::pole::BODY_END,
             SkeletonDescriptor {
-                class: Box::new(skeleton::pole::Pole {
-                    length: 2.0,
-                    mesh: BodyMesh {
+                class: Box::new(skeleton::pole::Pole::new(
+                    2.0,
+                    BodyMesh {
                         handle: builtins.cube.clone(),
                         translation: R3::new(0.0, 0.0, 0.5),
-                        scale: R3::new(0.2,0.2,1.0),
+                        scale: R3::new(0.2, 0.2, 1.0),
                         ..Default::default()
                     },
-                }),
+                )),
                 children: vec![(
-                    skeleton::pole::END,
+                    skeleton::pole::BODY_END,
                     SkeletonDescriptor {
-                        class: Box::new(skeleton::pole::Pole {
-                            length: 3.0,
-                            mesh: BodyMesh {
+                        class: Box::new(skeleton::pole::Pole::new(
+                            3.0,
+                            BodyMesh {
                                 handle: builtins.cube.clone(),
                                 translation: R3::new(0.0, 0.0, 0.5),
-                                scale: R3::new(0.2,0.2,1.0),
+                                scale: R3::new(0.2, 0.2, 1.0),
                                 ..Default::default()
                             },
-                        }),
+                        )),
                         children: vec![],
                     },
                 )],

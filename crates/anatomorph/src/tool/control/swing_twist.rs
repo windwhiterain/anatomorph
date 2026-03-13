@@ -7,7 +7,7 @@ use nalgebra::Unit;
 use crate::{
     Builtins, MainCamera, UICamera,
     bevy_utils::World2Screen,
-    multibody::{self, MultiBody, MultiBodyPlugin, joint::JointClass},
+    multibody::{self, MultiBody, MultiBodyPlugin, joint::Class},
     tool::ToolPlugin,
 };
 
@@ -23,12 +23,14 @@ fn visualize(
     mut commands: Commands,
     multibody: Res<MultiBody>,
     global_transforms: Res<multibody::GlobalTransforms>,
-    mut controller: Query<(Entity, &mut Transform, &mut Visualizer)>,
-    settings: Res<Builtins>,
+    mut visualizers: Query<(Entity, &mut Transform, &mut Visualizer)>,
+    builtins: Res<Builtins>,
     world2screen: World2Screen,
 ) {
-    let mut joints = (0..multibody.joints.swing_twist.len()).filter_map(|idx| {
-        let body_idx = multibody.joints.swing_twist[idx].body;
+    let mut joints = (0..multibody.joint_classes.swing_twist.len()).filter_map(|idx| {
+        let joint_class = &multibody.joint_classes.swing_twist[idx];
+        let joint = &multibody.joints[joint_class.base];
+        let body_idx = joint.body;
         if let Some(target_transform) = global_transforms.global_transforms.get(body_idx) {
             if let Some(screen_position) = world2screen.world2screen(target_transform.translation) {
                 Some((
@@ -46,7 +48,7 @@ fn visualize(
             None
         }
     });
-    for (entity, mut transform, mut visualizer) in controller.iter_mut() {
+    for (entity, mut transform, mut visualizer) in visualizers.iter_mut() {
         if let Some((idx, target_transform)) = joints.next() {
             *transform = target_transform;
             visualizer.idx = idx;
@@ -58,8 +60,8 @@ fn visualize(
         commands.spawn((
             target_transform,
             Visualizer { idx },
-            Mesh2d(settings.rect.clone()),
-            MeshMaterial2d(settings.yellow.clone()),
+            Mesh2d(builtins.rect.clone()),
+            MeshMaterial2d(builtins.yellow.clone()),
             RenderLayers::layer(1),
         ));
     }
@@ -76,7 +78,9 @@ fn on_drag(
         let _: Option<()> = try {
             let entity = event.entity;
             let idx = controller_visualizer.get(entity).ok()?.idx;
-            let body_idx = multibody.joints.swing_twist[idx].body;
+            let joint_class = &multibody.joint_classes.swing_twist[idx];
+            let joint = &multibody.joints[joint_class.base];
+            let body_idx = joint.body;
             let parent = multibody.bodies[body_idx].parent;
             let camera_transform = camera_global_transform.single().unwrap();
             let camera_translation = camera_transform.translation().to_anatomorph();
@@ -103,7 +107,7 @@ fn on_drag(
             let delta = event.delta.to_anatomorph();
             let delta_reject = 
                 camera2joint * delta.component_mul(&R2::new(1.0, -1.0)).push(0.0)/256.0;
-            let joint = &mut multibody.joints.swing_twist[idx];
+            let joint = &mut multibody.joint_classes.swing_twist[idx];
             let swing = joint.class.swing;
             let project_coef = swing.dot(&joint_look_direction);
             let project = project_coef * joint_look_direction.into_inner();
