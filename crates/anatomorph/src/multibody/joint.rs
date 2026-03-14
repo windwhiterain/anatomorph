@@ -45,7 +45,7 @@ impl Class for Free {
 #[derive(Debug, Clone, Copy,Component)]
 pub struct SwingTwist {
     pub swing: Unit<R3>,
-    pub twist: f32,
+    pub twist: R1,
 }
 
 impl Default for SwingTwist {
@@ -67,3 +67,18 @@ impl Class for SwingTwist {
         }
     }
 }
+
+#[derive(Debug, Clone, Copy,Component,Default)]
+pub struct Revolute {
+    pub value:R1
+}
+
+impl Class for Revolute {
+    fn transform(self) -> SE3 {
+        SE3 {
+            rotation: SO3::from_axis_angle(&R3::x_axis(), self.value),
+            ..Default::default()
+        }
+    }
+}
+

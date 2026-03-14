@@ -1,7 +1,7 @@
-use anatomorph_math::{R3, SE3, SO3, bevy::ToBevy};
+use anatomorph_math::{R2, R3, SE3, SO3, bevy::ToBevy};
 use bevy::{ecs::system::Query, prelude::*};
 
-use crate::{Builtins, hierarchy};
+use crate::{Builtins, bevy_utils::World2Screen, hierarchy};
 
 pub mod joint;
 
@@ -10,6 +10,9 @@ pub struct Transform(pub SE3);
 
 #[derive(Debug, Default, Component)]
 pub struct GlobalTransform(pub SE3);
+
+#[derive(Debug,Default,Component)]
+pub struct ScreenPositon(pub Option<R2>);
 
 #[derive(Debug, Clone, Component)]
 #[require(Mesh3d,MeshMaterial3d<StandardMaterial>)]
@@ -44,6 +47,7 @@ pub fn add<T: joint::Class>(
     let mut cmd = commands.spawn((
         Transform::default(),
         GlobalTransform::default(),
+        ScreenPositon::default(),
         hierarchy::Children::default(),
         joint_class,
     ));
@@ -67,24 +71,25 @@ pub struct Plugin;
 
 impl bevy::prelude::Plugin for Plugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (on_change_transforms, update_visual));
+        app.add_systems(Update, (update_global_transforms,update_screen_positions, update_visual));
         joint::register::<joint::Free>(app);
         joint::register::<joint::SwingTwist>(app);
+        joint::register::<joint::Revolute>(app);
     }
 }
 
-fn on_change_transforms<'a>(
+fn update_global_transforms<'a>(
     roots: Query<Entity, (Without<hierarchy::Parent>, With<Transform>)>,
     transforms: Query<(&'a Transform, &'a hierarchy::Children)>,
     global_transforms: Query<&mut GlobalTransform>,
 ) {
     struct Context<'w, 's, 'a> {
-        transforms: Query<'w, 's, (&'a Transform, &'a hierarchy::Children)>,
+        transforms: &'w Query<'w, 's, (&'a Transform, &'a hierarchy::Children)>,
     }
     struct MutContext<'w, 's, 'a> {
         global_transforms: Query<'w, 's, &'a mut GlobalTransform>,
     }
-    let ctx = Context { transforms };
+    let ctx = Context { transforms:&transforms };
     let mut mctx = MutContext { global_transforms };
     fn propagate(ctx: &Context, mctx: &mut MutContext, entity: Entity, parent_transform: SE3) {
         let (transform, children) = ctx.transforms.get(entity).unwrap();
@@ -97,6 +102,11 @@ fn on_change_transforms<'a>(
 
     for root in roots {
         propagate(&ctx, &mut mctx, root, default());
+    }
+}
+fn update_screen_positions(bodies: Query<(&GlobalTransform,&mut ScreenPositon)>,world2screen: World2Screen){
+    for (global_transform,mut screen_position) in bodies{
+        screen_position.0 = world2screen.world2screen(global_transform.0.translation);
     }
 }
 fn update_visual(

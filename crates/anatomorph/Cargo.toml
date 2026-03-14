@@ -8,3 +8,4 @@ bevy = { workspace = true, features = ["debug"] }
 bevy_panorbit_camera = "0.34.0"
 nalgebra = { workspace = true }
 anatomorph-math = { path = "../math" }
+arrayvec = "0.7.6"

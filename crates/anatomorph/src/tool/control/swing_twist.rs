@@ -13,13 +13,8 @@ use crate::{
         self,
         joint::{self},
     },
-    tool::{ToolPlugin, control::Controller},
+    tool::{ToolPlugin, control::Controlled},
 };
-
-#[derive(Debug, Component)]
-pub struct VisualizerGroup {
-    pub controller: Entity,
-}
 
 #[derive(Debug, Component)]
 #[require(Pickable)]
@@ -45,7 +40,6 @@ impl bevy::prelude::Plugin for Plugin {
             Update,
             (
                 on_add_controller.run_if(Self::enbale_condition),
-                update_visual.run_if(Self::enbale_condition),
                 on_drag.run_if(Self::enbale_condition),
             ),
         );
@@ -53,62 +47,36 @@ impl bevy::prelude::Plugin for Plugin {
 }
 
 fn on_add_controller(
-    controllers: Query<Entity, Added<Controller>>,
+    controlleds: Query<(Entity, &Controlled), Added<Controlled>>,
     mut commands: Commands,
     builtins: Res<Builtins>,
 ) {
-    for entity in controllers {
-        commands
-            .spawn((
-                Transform::default(),
-                VisualizerGroup { controller: entity },
-                Visibility::Hidden,
-            ))
-            .with_children(|parent| {
-                parent.spawn((
-                    SwingVisualizer { controller: entity },
-                    Transform {
-                        translation: R3::new(10.0, 0.0, 0.0).to_bevy(),
-                        scale: R3::new(16.0, 16.0, 1.0).to_bevy(),
-                        ..Default::default()
-                    },
-                    Mesh2d(builtins.rect.clone()),
-                    MeshMaterial2d(builtins.yellow.clone()),
-                    RenderLayers::layer(1),
-                ));
-                parent.spawn((
-                    TwistVisualizer { controller: entity },
-                    Transform {
-                        translation: R3::new(30.0, 0.0, 0.0).to_bevy(),
-                        scale: R3::new(16.0, 16.0, 1.0).to_bevy(),
-                        ..Default::default()
-                    },
-                    Mesh2d(builtins.rect.clone()),
-                    MeshMaterial2d(builtins.green.clone()),
-                    RenderLayers::layer(1),
-                ));
-            });
-    }
-}
-
-fn update_visual(
-    controllers: Query<&Controller>,
-    visualizer_groups: Query<(&mut Transform, &mut Visibility, &VisualizerGroup)>,
-) {
-    for (mut transform, mut visibility, visualizer_group) in visualizer_groups {
-        let controller = controllers.get(visualizer_group.controller).unwrap();
-        if let Some(screen_position) = controller.screen_position {
-            transform.translation = ((screen_position + controller.offset).push(1.0)).to_bevy();
-            transform.rotation = SO3::rotation_between_axis(
-                &R3::x_axis(),
-                &Unit::new_unchecked(controller.axis.into_inner().push(0.0)),
-            )
-            .unwrap_or_else(|| SO3::from_axis_angle(&R3::z_axis(), PI))
-            .to_bevy();
-            *visibility = Visibility::Inherited;
-        } else {
-            *visibility = Visibility::Hidden;
-        }
+    for (entity, controlled) in controlleds {
+        let visualize_group = controlled.visualize_group;
+        commands.entity(visualize_group).with_children(|parent| {
+            parent.spawn((
+                SwingVisualizer { controller: entity },
+                Transform {
+                    translation: R3::new(10.0, 0.0, 0.0).to_bevy(),
+                    scale: R3::new(16.0, 16.0, 1.0).to_bevy(),
+                    ..Default::default()
+                },
+                Mesh2d(builtins.rect.clone()),
+                MeshMaterial2d(builtins.yellow.clone()),
+                RenderLayers::layer(1),
+            ));
+            parent.spawn((
+                TwistVisualizer { controller: entity },
+                Transform {
+                    translation: R3::new(30.0, 0.0, 0.0).to_bevy(),
+                    scale: R3::new(16.0, 16.0, 1.0).to_bevy(),
+                    ..Default::default()
+                },
+                Mesh2d(builtins.rect.clone()),
+                MeshMaterial2d(builtins.green.clone()),
+                RenderLayers::layer(1),
+            ));
+        });
     }
 }
 
@@ -174,12 +142,11 @@ fn on_drag(
                     * joint_look_direction.into_inner();
                 swing_twist.swing = Unit::new_unchecked(project + reject);
             }
-            if let Some(visualizer) = twist_visualiers.get(entity).ok(){
+            if let Some(visualizer) = twist_visualiers.get(entity).ok() {
                 let entity = visualizer.controller;
-                let (mut swing_twist, parent, global_transform) =
-                    swing_twists.get_mut(entity).unwrap();
+                let (mut swing_twist, ..) = swing_twists.get_mut(entity).unwrap();
                 let delta = event.delta.to_anatomorph();
-                swing_twist.twist+=delta.y/256.0;
+                swing_twist.twist += delta.y / 256.0;
             }
         };
     }

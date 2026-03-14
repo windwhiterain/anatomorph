@@ -130,6 +130,7 @@ name = "anatomorph"
 version = "0.1.0"
 dependencies = [
  "anatomorph-math",
+ "arrayvec",
  "bevy",
  "bevy_panorbit_camera",
  "nalgebra",
