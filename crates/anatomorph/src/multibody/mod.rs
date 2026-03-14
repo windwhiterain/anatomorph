@@ -1,76 +1,26 @@
-use std::ops::Mul;
+use anatomorph_math::{R3, SE3, SO3, bevy::ToBevy};
+use bevy::{ecs::system::Query, prelude::*};
 
-use anatomorph_math::{Aff3, R3, SE3, SO3, bevy::ToBevy};
-use bevy::{
-    ecs::{query::Changed, system::Query}, log::tracing_subscriber::layer::Context, math::{Quat, Vec2, Vec3}, prelude::*, transform::components::Transform, utils::default
-};
-use nalgebra::{Quaternion, UnitQuaternion, Vector2, Vector3};
-
-use crate::{Builtins, Dependant, base_class::BaseClass, gen_set, impl_set::InSet, multibody::joint::{Class,  Joint}};
+use crate::{Builtins, hierarchy};
 
 pub mod joint;
 
-pub struct MultiBodyPlugin;
+#[derive(Debug, Default, Component)]
+pub struct Transform(pub SE3);
 
-impl Plugin for MultiBodyPlugin {
-    fn build(&self, app: &mut App) {
-        app.init_resource::<MultiBody>();
-        app.init_resource::<Transforms>();
-        app.init_resource::<GlobalTransforms>();
-        app.add_systems(Update, (update_transforms,update_global_transforms, visualize));
-    }
-}
+#[derive(Debug, Default, Component)]
+pub struct GlobalTransform(pub SE3);
 
-pub trait JointsTraverser {
-    fn run<T:Class>(&mut self,field:&Vec<BaseClass<T>>);
-}
-pub trait JointsTraverserMut {
-    fn run<T:Class>(&mut self,field:&mut Vec<BaseClass<T>>);
-}
-
-gen_set!(#[derive(Debug,Default)] pub JointClasses:JointsTraverser,JointsTraverserMut{free:Vec<BaseClass<joint::Free>>,swing_twist:Vec<BaseClass<joint::SwingTwist>>});
-
-#[derive(Debug, Default, Resource)]
-pub struct MultiBody {
-    pub bodies: Vec<Body>,
-    pub joints: Vec<Joint>,
-    pub joint_classes: JointClasses,
-}
-
-impl MultiBody{
-    pub fn add_joint<T:joint::Class>(&mut self,joint:joint::Desc<T>)where Vec<BaseClass<T>>:InSet<JointClasses>{
-        let joint_idx = self.joints.len();
-        self.joints.push(Joint { body: joint.body});
-        let vec = self.joint_classes.get_mut::<Vec<BaseClass<T>>>();
-        vec.push(BaseClass{class:joint.class,base:joint_idx});
-    }
-}
-
-#[derive(Debug, Default, Resource)]
-pub struct Transforms {
-    pub transforms: Vec<SE3>,
-}
-
-#[derive(Debug, Default, Resource)]
-pub struct GlobalTransforms {
-    pub global_transforms: Vec<SE3>,
-}
-
-#[derive(Debug, Default, Clone)]
-pub struct Body {
-    pub parent: Option<usize>,
-    pub mesh: Option<BodyMesh>,
-}
-
-#[derive(Debug, Clone)]
-pub struct BodyMesh {
-    pub handle: Handle<Mesh>,
+#[derive(Debug, Clone, Component)]
+#[require(Mesh3d,MeshMaterial3d<StandardMaterial>)]
+pub struct Mesh {
+    pub handle: Handle<bevy::prelude::Mesh>,
     pub translation: R3,
     pub scale: R3,
     pub rotation: SO3,
 }
 
-impl Default for BodyMesh {
+impl Default for Mesh {
     fn default() -> Self {
         Self {
             handle: Default::default(),
@@ -81,109 +31,89 @@ impl Default for BodyMesh {
     }
 }
 
-#[derive(Component)]
-pub struct BodyVisualizer {
-    pub idx: usize,
+pub fn add<T: joint::Class>(
+    commands: &mut Commands,
+    joint_class: T,
+    parent: Option<Entity>,
+    mesh: Option<Mesh>,
+) -> Entity {
+    let mut cmd = commands.spawn((
+        Transform::default(),
+        GlobalTransform::default(),
+        hierarchy::Children::default(),
+        joint_class,
+    ));
+    if let Some(parent) = parent {
+        cmd.insert(hierarchy::Parent(parent));
+    }
+    if let Some(mesh) = mesh {
+        cmd.insert(mesh);
+    }
+    cmd.id()
 }
 
-impl MultiBody {
-    pub fn new(bodies: Vec<Body>) -> Self {
-        Self {
-            bodies,
-            ..default()
-        }
+pub fn parent(commands: &mut Commands, child: Entity, parent: Entity) {
+    commands.entity(child).insert(hierarchy::Parent(parent));
+}
+
+pub struct Plugin;
+
+impl bevy::prelude::Plugin for Plugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(Update, (on_change_transforms, update_visual));
+        joint::register::<joint::Free>(app);
+        joint::register::<joint::SwingTwist>(app);
     }
 }
-pub fn update_transforms(
-    multibody: Res<MultiBody>,
-    mut transforms: ResMut<Transforms>,
-){
-    if !multibody.is_changed() {return}
-    struct Context<'a>{
-        multibody:&'a MultiBody,
-        transforms:&'a mut Vec<SE3>
-    }
-    impl<'a> JointsTraverser for Context<'a>{
-        fn run<T:Class>(&mut self,field:&Vec<BaseClass<T>>) {
-            for joint in field{
-                self.transforms[self.multibody.joints[joint.base].body] = joint.class.transform();
-            }
-        }
-    }
-    let transforms = &mut transforms.transforms;
-    let len = multibody.bodies.iter().len();
-    transforms.resize(len, default());
-    multibody.joint_classes.traverse(&mut Context{transforms,multibody:multibody.as_ref()});
-}
-pub fn update_global_transforms(
-    multibody: Res<MultiBody>,
-    transforms: Res<Transforms>,
-    mut global_transforms: ResMut<GlobalTransforms>,
+
+fn on_change_transforms<'a>(
+    roots: Query<Entity, (Without<hierarchy::Parent>, With<Transform>)>,
+    transforms: Query<(&'a Transform, &'a hierarchy::Children)>,
+    global_transforms: Query<&mut GlobalTransform>,
 ) {
-    if !transforms.is_changed() {return}
-    let global_transforms = &mut global_transforms.global_transforms;
-    let transforms = &transforms.transforms;
-    let len = transforms.len();
-    global_transforms.resize(len, default());
-    for i in 0..len {
-        let body = &multibody.bodies[i];
-        global_transforms[i] = if let Some(parent) = body.parent {
-            global_transforms[parent] * transforms[i]
-        } else {
-            transforms[i]
-        };
+    struct Context<'w, 's, 'a> {
+        transforms: Query<'w, 's, (&'a Transform, &'a hierarchy::Children)>,
+    }
+    struct MutContext<'w, 's, 'a> {
+        global_transforms: Query<'w, 's, &'a mut GlobalTransform>,
+    }
+    let ctx = Context { transforms };
+    let mut mctx = MutContext { global_transforms };
+    fn propagate(ctx: &Context, mctx: &mut MutContext, entity: Entity, parent_transform: SE3) {
+        let (transform, children) = ctx.transforms.get(entity).unwrap();
+        let transform = parent_transform * transform.0;
+        mctx.global_transforms.get_mut(entity).unwrap().0 = transform;
+        for child in children.0.iter().copied() {
+            propagate(ctx, mctx, child, transform);
+        }
+    }
+
+    for root in roots {
+        propagate(&ctx, &mut mctx, root, default());
     }
 }
-fn visualize(
-    mut commands: Commands,
-    mut query: Query<(Entity, &mut Transform, &mut BodyVisualizer, &mut Mesh3d)>,
-    multibody: Res<MultiBody>,
-    global_transforms: Res<GlobalTransforms>,
+fn update_visual(
+    visual_bodies: Query<(
+        &GlobalTransform,
+        &Mesh,
+        &mut bevy::prelude::Transform,
+        &mut bevy::prelude::Mesh3d,
+        &mut bevy::prelude::MeshMaterial3d<StandardMaterial>,
+    )>,
     builtin: Res<Builtins>,
 ) {
-    if !multibody.is_changed() && !global_transforms.is_changed() {
-        return;
-    }
-    let mut bodies = (0..multibody
-        .bodies
-        .len()
-        .min(global_transforms.global_transforms.len()))
-        .filter_map(|idx| {
-            let body = &multibody.bodies[idx];
-            let mesh = &body.mesh;
-            if let Some(mesh) = mesh {
-                let target_transform = global_transforms.global_transforms[idx]
-                    * SE3 {
-                        translation: mesh.scale.component_mul(&mesh.translation),
-                        rotation: mesh.rotation,
-                    };
-                let target_transform = Transform {
-                    translation: target_transform.translation.to_bevy(),
-                    rotation: target_transform.rotation.to_bevy(),
-                    scale: mesh.scale.to_bevy(),
-                };
-                Some((idx, target_transform, &mesh.handle))
-            } else {
-                None
-            }
-        });
-    for (entity, mut transform, mut visualizer, mut mesh3d) in query.iter_mut() {
-        if let Some((idx, target_transform, mesh)) = bodies.next() {
-            *transform = target_transform;
-            visualizer.idx = idx;
-            if mesh3d.0 != *mesh {
-                mesh3d.0 = mesh.clone();
-            }
-        } else {
-            commands.entity(entity).despawn();
+    for (transform, mesh, mut bevy_transform, mut bevy_mesh, mut bevy_material) in visual_bodies {
+        *bevy_transform = bevy::prelude::Transform {
+            translation: (transform.0.translation + transform.0.rotation * mesh.translation.component_mul(&mesh.scale))
+                .to_bevy(),
+            rotation: (transform.0.rotation * mesh.rotation).to_bevy(),
+            scale: mesh.scale.to_bevy(),
+        };
+        if bevy_mesh.0 != mesh.handle {
+            bevy_mesh.0 = mesh.handle.clone();
         }
-    }
-    for (idx, target_transform, mesh) in bodies {
-        commands.spawn((
-            target_transform,
-            BodyVisualizer { idx },
-            Mesh3d(mesh.clone()),
-            MeshMaterial3d(builtin.default_material.clone()),
-        ));
+        if bevy_material.0 != builtin.default_material {
+            bevy_material.0 = builtin.default_material.clone();
+        }
     }
 }

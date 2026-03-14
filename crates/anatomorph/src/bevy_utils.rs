@@ -55,3 +55,15 @@ impl<'w, 's> World2Screen<'w, 's> {
         Some(position_pixel)
     }
 }
+
+pub trait AddDendencyPlugin{
+    fn add_dependency_plugin<T:Plugin>(&mut self,plugin:impl Fn()->T);
+}
+
+impl AddDendencyPlugin for App{
+    fn add_dependency_plugin<T:Plugin>(&mut self,plugin:impl FnOnce()->T) {
+        if !self.is_plugin_added::<T>(){
+            self.add_plugins(plugin());
+        }
+    }
+}

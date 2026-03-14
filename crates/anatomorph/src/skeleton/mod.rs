@@ -1,102 +1,110 @@
-use bevy::ecs::system::SystemChangeTick;
-use bevy::ecs::{change_detection::Tick, system::SystemState};
+use anatomorph_math::SE3;
 use bevy::prelude::*;
+use std::marker::PhantomData;
 
-use crate::multibody::{self, MultiBody, MultiBodyPlugin};
+use crate::{bevy_utils::AddDendencyPlugin, multibody::{self, joint}};
 
 pub mod pole;
 
-pub trait BoneClass: Sync + Send + std::fmt::Debug {
-    fn bodies_len(&self) -> usize;
-    fn init(&mut self, bone: &Bone, multibody: &mut MultiBody);
-    fn update(&self, bone: &Bone, multibody: &mut MultiBody);
+pub trait Class: std::fmt::Debug + Component {
+    fn child_bodies(&self) -> &[Option<Entity>];
 }
 
-#[derive(Debug)]
-pub struct Bone {
-    pub body_offset: usize,
-    pub parent_body: Option<usize>,
-}
-#[derive(Debug, Resource, Default)]
+#[derive(Debug, Component,Default)]
 pub struct Skeleton {
-    pub bones: Vec<Bone>,
-    pub bone_classes: Vec<Box<dyn BoneClass>>,
-    pub bodies_len: usize,
-    pub ticks: Vec<Tick>,
+    pub transform: SE3,
+    pub root_body: Option<Entity>,
 }
+
 impl Skeleton {
-    pub fn new(descriptor: SkeletonDescriptor) -> Self {
-        struct Context {
-            skeleton: Skeleton,
-        }
-        impl Context {
-            fn traverse(&mut self, descriptor: SkeletonDescriptor, parent: Option<usize>) {
-                let body_offset = self.skeleton.bodies_len;
-                self.skeleton.bodies_len += descriptor.class.bodies_len();
-                self.skeleton.bones.push(Bone {
-                    body_offset,
-                    parent_body: parent,
-                });
-                self.skeleton.bone_classes.push(descriptor.class);
-                for (child_body_offset, child) in descriptor.children {
-                    self.traverse(child, Some(body_offset + child_body_offset));
-                }
-            }
-        }
-        let mut ctx = Context {
-            skeleton: default(),
-        };
-        ctx.traverse(descriptor, None);
-        ctx.skeleton
-            .ticks
-            .resize_with(ctx.skeleton.bones.len(), default);
-        ctx.skeleton
-    }
-}
-pub struct SkeletonDescriptor {
-    pub class: Box<dyn BoneClass>,
-    pub children: Vec<(usize, SkeletonDescriptor)>,
-}
-pub fn init_multibody(mut skeleton: ResMut<Skeleton>,
-    mut multibody: ResMut<MultiBody>,system_ticks: SystemChangeTick){
-    let now = system_ticks.this_run();
-    multibody.bodies.resize_with(skeleton.bodies_len, default);
-    for idx in 0..skeleton.bones.len() {
-        skeleton.ticks[idx] = now;
-        let Skeleton{bones,bone_classes,..} = skeleton.as_mut();
-        let bone = &bones[idx];
-        let bone_class = &mut bone_classes[idx];
-        bone_class.init(bone, &mut multibody);
-        multibody.bodies[bone.body_offset].parent = bone.parent_body;
-    }
-}
-pub fn update_multibody(
-    skeleton: Res<Skeleton>,
-    mut multibody: ResMut<MultiBody>,
-    system_change_tick: SystemChangeTick,
-) {
-    if !skeleton.is_changed() {
-        return;
-    }
-    multibody.bodies.resize_with(skeleton.bodies_len, default);
-    for idx in 0..skeleton.bones.len() {
-        let tick = skeleton.ticks[idx];
-        let bone = &skeleton.bones[idx];
-        let bone_class = &skeleton.bone_classes[idx];
-        if tick.is_newer_than(system_change_tick.last_run(), system_change_tick.this_run()) {
-            bone_class.update(bone, &mut multibody);
+    pub fn new(transform: SE3) -> Self {
+        Self {
+            transform,
+            root_body: default(),
         }
     }
-    info!("{multibody:?}")
 }
-pub struct SkeletonPlugin;
-impl Plugin for SkeletonPlugin {
+
+#[derive(Debug, Component)]
+pub struct Parent<T: Class> {
+    pub skeleton: Entity,
+    pub offset: usize,
+    _p: PhantomData<&'static T>,
+}
+
+impl<T: Class> Parent<T> {
+    pub fn new(skeleton: Entity, offset: usize) -> Self {
+        Self {
+            skeleton,
+            offset,
+            _p: default(),
+        }
+    }
+}
+
+pub fn add<T: Class>(
+    commands: &mut Commands,
+    skeleton_class: T,
+    skeleton: Skeleton,
+    parent: Option<Parent<T>>,
+)->Entity {
+    let mut cmd = commands.spawn((skeleton_class, skeleton));
+    if let Some(parent) = parent {
+        cmd.insert(parent);
+    }
+    cmd.id()
+}
+
+pub struct Plugin;
+impl bevy::prelude::Plugin for Plugin {
     fn build(&self, app: &mut App) {
-        if !app.is_plugin_added::<MultiBodyPlugin>() {
-            app.add_plugins(MultiBodyPlugin);
-        }
-        app.init_resource::<Skeleton>();
-        app.add_systems(Startup, init_multibody);
-        app.add_systems(Update, update_multibody);
+        app.add_dependency_plugin(||multibody::Plugin);
+        app.add_systems(Update, (on_add_skeleton,on_change_skeleton.after(on_add_skeleton)));
+        register(app, pole::Plugin);
+    }
+}
+
+pub trait SkeletonPlugin:bevy::prelude::Plugin{
+    type Skeleton:Class;
+}
+
+pub fn register<T:SkeletonPlugin>(app: &mut App,plugin:T){
+    app.add_plugins(plugin);
+    app.add_systems(Update, on_change_parent::<T::Skeleton>);
+}
+
+fn on_add_skeleton(
+    mut commands: Commands,
+    skeletons: Query<&mut Skeleton, Added<Skeleton>>,
+) {
+    for mut skeleton in skeletons {
+        skeleton.root_body = Some(multibody::add(
+            &mut commands,
+            joint::Free::default(),
+            None,
+            None,
+        ));
+    }
+}
+
+fn on_change_parent<T: Class>(
+    mut commands:Commands,
+    parents: Query<(&Parent<T>, &Skeleton), Changed<Parent<T>>>,
+    skeleton_classes: Query<&T>,
+) {
+    for (parent, skeleton) in parents {
+        let skeleton_class = skeleton_classes.get(parent.skeleton).unwrap();
+        let parent_body = skeleton_class.child_bodies()[parent.offset].unwrap();
+        multibody::parent(&mut commands, skeleton.root_body.unwrap(), parent_body);
+    }
+}
+
+fn on_change_skeleton(
+    skeletons: Query<&Skeleton, Changed<Skeleton>>,
+    mut free_joints: Query<&mut joint::Free>,
+) {
+    for skeleton in skeletons {
+        let mut free_joint = free_joints.get_mut(skeleton.root_body.unwrap()).unwrap();
+        free_joint.0 = skeleton.transform;
     }
 }

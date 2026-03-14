@@ -1,4 +1,4 @@
-use crate::{Builtins, bevy_utils::World2Screen, multibody::{self, MultiBody}, tool::ToolPlugin};
+use crate::{Builtins, bevy_utils::World2Screen, multibody::{self}, tool::ToolPlugin};
 use anatomorph_math::R2;
 use bevy::prelude::*;
 use nalgebra::Unit;

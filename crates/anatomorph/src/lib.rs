@@ -1,24 +1,22 @@
 #![feature(try_blocks)]
 use crate::{
-    multibody::{Body, BodyMesh, MultiBody, MultiBodyPlugin},
-    skeleton::{Skeleton, SkeletonDescriptor, SkeletonPlugin},
+    skeleton::{Skeleton,SkeletonPlugin},
     tool::{
         control::ControlPlugin,
         select::{SelectPlugin, Selectable},
     },
 };
 use anatomorph_math::{Aff3, R3, SE3};
-use bevy::{camera::visibility::RenderLayers, pbr::wireframe::WireframePlugin, prelude::*};
+use bevy::{camera::visibility::RenderLayers, prelude::*};
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 
 use crate::tool::Tools;
 
-pub mod base_class;
 pub mod bevy_utils;
-pub mod impl_set;
 pub mod multibody;
 pub mod skeleton;
 pub mod tool;
+pub mod hierarchy;
 
 #[derive(Debug)]
 pub struct Dependant<T> {
@@ -57,7 +55,6 @@ fn setup(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut color_materials: ResMut<Assets<ColorMaterial>>,
-    mut skeleton: ResMut<Skeleton>,
     mut builtins: ResMut<Builtins>,
 ) {
     commands.spawn((
@@ -122,46 +119,6 @@ fn setup(
     builtins.cube = cube;
     builtins.yellow = yellow;
     builtins.green = green;
-    *skeleton = Skeleton::new(SkeletonDescriptor {
-        class: Box::new(skeleton::pole::Pole::new(
-            1.0,
-            BodyMesh {
-                handle: builtins.cube.clone(),
-                translation: R3::new(0.0, 0.0, 0.5),
-                scale: R3::new(0.2, 0.2, 1.0),
-                ..Default::default()
-            },
-        )),
-        children: vec![(
-            skeleton::pole::BODY_END,
-            SkeletonDescriptor {
-                class: Box::new(skeleton::pole::Pole::new(
-                    2.0,
-                    BodyMesh {
-                        handle: builtins.cube.clone(),
-                        translation: R3::new(0.0, 0.0, 0.5),
-                        scale: R3::new(0.2, 0.2, 1.0),
-                        ..Default::default()
-                    },
-                )),
-                children: vec![(
-                    skeleton::pole::BODY_END,
-                    SkeletonDescriptor {
-                        class: Box::new(skeleton::pole::Pole::new(
-                            3.0,
-                            BodyMesh {
-                                handle: builtins.cube.clone(),
-                                translation: R3::new(0.0, 0.0, 0.5),
-                                scale: R3::new(0.2, 0.2, 1.0),
-                                ..Default::default()
-                            },
-                        )),
-                        children: vec![],
-                    },
-                )],
-            },
-        )],
-    })
 }
 
 impl Plugin for AnatomorphPlugin {
@@ -170,12 +127,12 @@ impl Plugin for AnatomorphPlugin {
         app.init_resource::<Builtins>();
         app.add_plugins((
             DefaultPlugins,
-            WireframePlugin::default(),
             PanOrbitCameraPlugin,
-            MultiBodyPlugin,
+            multibody::Plugin,
             SelectPlugin,
-            SkeletonPlugin,
+            skeleton::Plugin,
             ControlPlugin,
+            hierarchy::Plugin,
         ));
         app.add_systems(Startup, setup);
     }
