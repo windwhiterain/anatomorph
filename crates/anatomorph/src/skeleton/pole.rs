@@ -63,6 +63,7 @@ fn on_add(mut commands: Commands, poles: Query<(&mut Pole, &Skeleton), Added<Ske
             joint::Free::default(),
             Some(skeleton.root_body.unwrap()),
             None,
+            false,
         ));
         pole.child_bodies[CHILD_END] = Some(multibody::add(
             &mut commands,
@@ -72,6 +73,7 @@ fn on_add(mut commands: Commands, poles: Query<(&mut Pole, &Skeleton), Added<Ske
             },
             Some(pole.free_joint.unwrap()),
             None,
+            true
         ));
     }
 }

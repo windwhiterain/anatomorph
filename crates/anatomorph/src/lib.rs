@@ -1,13 +1,9 @@
 #![feature(try_blocks)]
 use crate::{
-    skeleton::{Skeleton,SkeletonPlugin},
-    tool::{
-        control::ControlPlugin,
-        select::{SelectPlugin, Selectable},
-    },
+    bevy_utils::AddDendencyPlugin, skeleton::{Skeleton,SkeletonPlugin}, tool::control::ControlPlugin
 };
 use anatomorph_math::{Aff3, R3, SE3};
-use bevy::{camera::visibility::RenderLayers, prelude::*};
+use bevy::{camera::visibility::RenderLayers, gizmos::GizmoPlugin, prelude::*};
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 
 use crate::tool::Tools;
@@ -32,8 +28,6 @@ impl<T: Default> Default for Dependant<T> {
         }
     }
 }
-pub struct AnatomorphPlugin;
-
 #[derive(Debug, Resource, Default)]
 pub struct Builtins {
     pub default_material: Handle<StandardMaterial>,
@@ -50,12 +44,37 @@ pub struct MainCamera;
 #[derive(Debug, Component)]
 pub struct UICamera;
 
+#[derive(Debug,Default,Reflect,GizmoConfigGroup)]
+pub struct UIGizmo;
+
+pub struct AnatomorphPlugin;
+
+impl Plugin for AnatomorphPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_dependency_plugin(||MeshPickingPlugin);
+        app.init_resource::<Tools>();
+        app.init_resource::<Builtins>();
+        app.init_gizmo_group::<UIGizmo>();
+        app.add_plugins((
+            DefaultPlugins,
+            PanOrbitCameraPlugin,
+            multibody::Plugin,
+            skeleton::Plugin,
+            ControlPlugin,
+            hierarchy::Plugin,
+        ));
+        app.add_systems(Startup, setup);
+    }
+}
+
 fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut color_materials: ResMut<Assets<ColorMaterial>>,
     mut builtins: ResMut<Builtins>,
+    mut gizmo_config_store: ResMut<GizmoConfigStore>,
+    mut mesh_picking_settings: ResMut<MeshPickingSettings>,
 ) {
     commands.spawn((
         MainCamera,
@@ -75,7 +94,6 @@ fn setup(
             button_pan: MouseButton::Middle,
             ..default()
         },
-        MeshPickingCamera,
     ));
     commands.spawn((
         UICamera,
@@ -85,7 +103,14 @@ fn setup(
             order: 1,
             ..Default::default()
         },
+        MeshPickingCamera
     ));
+
+    let (gizmo_config,_)=gizmo_config_store.config_mut::<UIGizmo>();
+    gizmo_config.render_layers = RenderLayers::layer(1);
+
+    mesh_picking_settings.require_markers = true;
+
     let circle = meshes.add(Circle::new(0.5).mesh());
     let rect = meshes.add(Rectangle::new(1.0, 1.0).mesh());
     let sphere = meshes.add(Circle::new(0.5).mesh());
@@ -119,21 +144,4 @@ fn setup(
     builtins.cube = cube;
     builtins.yellow = yellow;
     builtins.green = green;
-}
-
-impl Plugin for AnatomorphPlugin {
-    fn build(&self, app: &mut App) {
-        app.init_resource::<Tools>();
-        app.init_resource::<Builtins>();
-        app.add_plugins((
-            DefaultPlugins,
-            PanOrbitCameraPlugin,
-            multibody::Plugin,
-            SelectPlugin,
-            skeleton::Plugin,
-            ControlPlugin,
-            hierarchy::Plugin,
-        ));
-        app.add_systems(Startup, setup);
-    }
 }

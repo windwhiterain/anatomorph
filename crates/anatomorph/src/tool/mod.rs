@@ -2,10 +2,7 @@ use std::{any::TypeId, collections::HashMap};
 
 use bevy::prelude::*;
 
-use crate::tool::control::ControlPlugin;
-
 pub mod control;
-pub mod select;
 
 #[derive(Debug)]
 pub struct Tool {

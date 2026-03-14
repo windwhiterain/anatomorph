@@ -83,6 +83,7 @@ fn on_add_skeleton(
             joint::Free::default(),
             None,
             None,
+            false,
         ));
     }
 }

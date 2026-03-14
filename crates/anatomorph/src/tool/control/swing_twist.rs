@@ -7,19 +7,24 @@ use nalgebra::Unit;
 
 use crate::{
     Builtins, MainCamera,
-    bevy_utils::{AddDendencyPlugin, World2Screen},
+    bevy_utils::AddDendencyPlugin,
     hierarchy,
     multibody::{
         self,
         joint::{self},
     },
-    tool::{ToolPlugin, control::swing_twist},
+    tool::{ToolPlugin, control::Controller},
 };
 
 #[derive(Debug, Component)]
+pub struct Visualized {
+    pub swing: Entity,
+}
+
+#[derive(Debug, Component)]
 #[require(Pickable)]
-pub struct Visualizer {
-    pub entity: Entity,
+pub struct SwingVisualizer {
+    pub controller: Entity,
 }
 
 pub struct Plugin;
@@ -33,6 +38,7 @@ impl bevy::prelude::Plugin for Plugin {
         app.add_systems(
             Update,
             (
+                attach_visualized.run_if(Self::enbale_condition),
                 update_visual.run_if(Self::enbale_condition),
                 on_drag.run_if(Self::enbale_condition),
             ),
@@ -40,46 +46,44 @@ impl bevy::prelude::Plugin for Plugin {
     }
 }
 
-fn update_visual(
+fn attach_visualized(
+    controllers: Query<Entity, Added<Controller>>,
     mut commands: Commands,
-    bodies: Query<(Entity, &multibody::GlobalTransform, &joint::SwingTwist)>,
-    mut visualizers: Query<(Entity, &mut Transform, &mut Visualizer)>,
     builtins: Res<Builtins>,
-    world2screen: World2Screen,
 ) {
-    let mut joints = bodies
-        .iter()
-        .filter_map(|(entity, global_transform, swing_twist)| {
-            if let Some(screen_position) = world2screen.world2screen(global_transform.0.translation)
-            {
-                Some((
-                    entity,
-                    Transform {
-                        translation: screen_position.push(0.0).to_bevy(),
-                        scale: R3::repeat(16.0).to_bevy(),
-                        ..Default::default()
-                    },
-                ))
-            } else {
-                None
-            }
-        });
-    for (entity, mut transform, mut visualizer) in visualizers.iter_mut() {
-        if let Some((idx, target_transform)) = joints.next() {
-            *transform = target_transform;
-            visualizer.entity = idx;
-        } else {
-            commands.entity(entity).despawn();
-        }
+    for entity in controllers {
+        let swing = commands
+            .spawn((
+                SwingVisualizer { controller: entity },
+                Transform {
+                    scale: R3::new(16.0, 16.0, 1.0).to_bevy(),
+                    ..Default::default()
+                },
+                Mesh2d(builtins.rect.clone()),
+                MeshMaterial2d(builtins.yellow.clone()),
+                RenderLayers::layer(1),
+                Visibility::Hidden,
+            ))
+            .id();
+        commands.entity(entity).insert(Visualized { swing });
     }
-    for (idx, target_transform) in joints {
-        commands.spawn((
-            target_transform,
-            Visualizer { entity: idx },
-            Mesh2d(builtins.rect.clone()),
-            MeshMaterial2d(builtins.yellow.clone()),
-            RenderLayers::layer(1),
-        ));
+}
+
+fn update_visual(
+    visualizeds: Query<(&Visualized, &Controller, &joint::SwingTwist)>,
+    mut swing_visualizers: Query<(&mut Transform, &mut Visibility), With<SwingVisualizer>>,
+) {
+    for (visualized, controller, _swing_twist) in visualizeds {
+        let (mut transform, mut visibility) = swing_visualizers.get_mut(visualized.swing).unwrap();
+        if let Some(screen_position) = controller.screen_position {
+            transform.translation =
+                ((screen_position + controller.offset + 10.0 * controller.axis.into_inner())
+                    .push(1.0))
+                .to_bevy();
+            *visibility = Visibility::Inherited;
+        } else {
+            *visibility = Visibility::Hidden;
+        }
     }
 }
 
@@ -90,14 +94,14 @@ fn on_drag(
         Option<&hierarchy::Parent>,
         &multibody::GlobalTransform,
     )>,
-    visualiers: Query<&Visualizer>,
+    visualiers: Query<&SwingVisualizer>,
     global_transforms: Query<&multibody::GlobalTransform>,
     camera_global_transform: Query<&GlobalTransform, With<MainCamera>>,
 ) {
     for event in events.read() {
         let _: Option<()> = try {
             let entity = event.entity;
-            let entity = visualiers.get(entity).ok()?.entity;
+            let entity = visualiers.get(entity).ok()?.controller;
             let (mut swing_twist, parent, global_transform) = swing_twists.get_mut(entity).unwrap();
             let camera_transform = camera_global_transform.single().unwrap();
             let camera_translation = camera_transform.translation().to_anatomorph();

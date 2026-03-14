@@ -31,11 +31,15 @@ impl Default for Mesh {
     }
 }
 
+#[derive(Debug,Default,Component)]
+pub struct Controllable;
+
 pub fn add<T: joint::Class>(
     commands: &mut Commands,
     joint_class: T,
     parent: Option<Entity>,
     mesh: Option<Mesh>,
+    controllable:bool,
 ) -> Entity {
     let mut cmd = commands.spawn((
         Transform::default(),
@@ -48,6 +52,9 @@ pub fn add<T: joint::Class>(
     }
     if let Some(mesh) = mesh {
         cmd.insert(mesh);
+    }
+    if controllable{
+        cmd.insert(Controllable);
     }
     cmd.id()
 }
